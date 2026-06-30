@@ -53,6 +53,20 @@ const STEM_ELEMENTS: Record<string, string> = {
   壬: "水",
   癸: "水",
 };
+const BRANCH_ELEMENTS: Record<string, string> = {
+  寅: "木",
+  卯: "木",
+  巳: "火",
+  午: "火",
+  申: "金",
+  酉: "金",
+  亥: "水",
+  子: "水",
+  辰: "土",
+  戌: "土",
+  丑: "土",
+  未: "土",
+};
 const CONTROLS: Record<string, string> = {
   木: "土",
   土: "水",
@@ -211,7 +225,7 @@ const ENCYCLOPEDIA_SECTIONS = [
     title: "择时",
     items: [
       { name: "择时顺序", detail: "先选日，选好日后再选时；时辰确定后，再按日干与时支查选刻表，分上刻、中刻、下刻。" },
-      { name: "择时来源", detail: "择完日后先选时，再选刻。择时主规则为贵人登天表：按日干和准确交节时间所在节气段取阳贵、阴贵，白天用阳贵，夜晚用阴贵；明显白天不取阴贵，明显夜晚不取阳贵，黎明傍晚保留复核。若不命中贵人登天，也可看六合、三合、抉山吉时、禄时等辅助时。结婚择时仍先满足夫星/子嗣硬条件。" },
+      { name: "择时来源", detail: "择完日后先选时，再选刻。择时主规则为贵人登天表：按日干和准确交节时间所在节气段取阳贵、阴贵，白天用阳贵，夜晚用阴贵；明显白天不取阴贵，明显夜晚不取阳贵，黎明傍晚保留复核。若年月日未见禄，优先补禄时，但不覆盖命主三煞、日时六冲等硬避。日时支相克扣分，日时干相克扣分减半。若不命中贵人登天，也可看六合、三合、抉山吉时、禄时等辅助时。结婚择时仍先满足夫星/子嗣硬条件。" },
       { name: "选刻表", detail: "左侧取日干，顶部取时支；每个时辰 120 分钟分三刻：上刻前 40 分钟，中刻中间 40 分钟，下刻后 40 分钟。按表内神煞字样标记优先、避开或参考。" },
     ],
   },
@@ -418,7 +432,7 @@ function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch, form: Dat
   }
 
   const timeGanZhi = getTimeGanZhiText(day.dayGan, timeBranch);
-  const timeStemControl = getTimeStemControlText(day.dayGan, timeGanZhi);
+  const dayTimeConflict = getDayTimeConflictReviewText(day, timeBranch, timeGanZhi);
   const birthSanShaTimeControl = getBirthSanShaTimeControlText(form, timeBranch);
   const matchedHour = day.recommendedHours.find((hour) => hour.branch === timeBranch);
   if (matchedHour) {
@@ -436,14 +450,14 @@ function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch, form: Dat
   if (day.recommendedHours.length === 0) {
     return [
       `${timeGanZhi}时未列入推荐，本日也没有可展示的推荐时辰。`,
-      ...(timeStemControl ? [timeStemControl] : []),
+      ...(dayTimeConflict ? [dayTimeConflict] : []),
       ...(birthSanShaTimeControl ? [birthSanShaTimeControl] : []),
     ];
   }
 
   return [
     `${timeGanZhi}时未列入本日推荐时辰。`,
-    ...(timeStemControl ? [timeStemControl] : []),
+    ...(dayTimeConflict ? [dayTimeConflict] : []),
     ...(birthSanShaTimeControl ? [birthSanShaTimeControl] : []),
     `本日可参考的时辰：${day.recommendedHours.slice(0, 5).map((hour) => `${getTimeGanZhiText(day.dayGan, hour.branch)}时${hour.timeRange}（${hour.relation}）`).join("、")}。`,
   ];
@@ -471,14 +485,31 @@ function getTimeGanZhiText(dayStem: string, hourBranch: string) {
   return `${STEMS[(stemIndex + branchIndex) % STEMS.length]}${hourBranch}`;
 }
 
-function getTimeStemControlText(dayStem: string, timeGanZhi: string) {
+function getDayTimeConflictReviewText(day: ScoredDay, timeBranch: TimeBranch, timeGanZhi: string) {
   const timeStem = timeGanZhi.slice(0, 1);
-  const timeElement = STEM_ELEMENTS[timeStem];
-  const dayElement = STEM_ELEMENTS[dayStem];
-  if (!timeElement || !dayElement || CONTROLS[timeElement] !== dayElement) {
+  const details: string[] = [];
+  const branchConflict = getMutualControlText(day.dayZhi, BRANCH_ELEMENTS[day.dayZhi], timeBranch, BRANCH_ELEMENTS[timeBranch], "支");
+  const stemConflict = getMutualControlText(day.dayGan, STEM_ELEMENTS[day.dayGan], timeStem, STEM_ELEMENTS[timeStem], "干");
+  if (branchConflict) {
+    details.push(`${branchConflict}，支相克扣8分`);
+  }
+  if (stemConflict) {
+    details.push(`${stemConflict}，干相克扣4分`);
+  }
+  return details.length > 0 ? `择时规则：${details.join("；")}，此时辰会降低优先级。` : "";
+}
+
+function getMutualControlText(leftName: string, leftElement: string | undefined, rightName: string, rightElement: string | undefined, label: "干" | "支") {
+  if (!leftElement || !rightElement) {
     return "";
   }
-  return `择时规则：${timeStem}时干克${dayStem}日干，此时不取。`;
+  if (CONTROLS[leftElement] === rightElement) {
+    return `日${label}${leftName}${leftElement}克时${label}${rightName}${rightElement}`;
+  }
+  if (CONTROLS[rightElement] === leftElement) {
+    return `时${label}${rightName}${rightElement}克日${label}${leftName}${leftElement}`;
+  }
+  return "";
 }
 
 function getBirthSanShaTimeControlText(form: DateInput, timeBranch: TimeBranch) {

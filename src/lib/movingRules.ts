@@ -1,6 +1,6 @@
 import { Solar } from "lunar-javascript";
 import { addDays, getAlmanacDay, getBirthSolarDate, parseLocalDate } from "./calendar";
-import type { AlmanacDay, DateInput, HourSegment, ScoreBreakdownItem, ScoredDay } from "./types";
+import type { AlmanacDay, DateInput, HourSegment, RecommendedHour, ScoreBreakdownItem, ScoredDay } from "./types";
 
 const STEM_ELEMENTS: Record<string, string> = {
   甲: "木",
@@ -1829,12 +1829,13 @@ export function scoreMovingDay(day: AlmanacDay, input: DateInput): ScoredDay {
       detail: `相主规则：四柱八字有一个禄都说明有禄；生日年干${profile.yearGan}，禄在${profile.luBranch}，本课命中${luHits.hits.join("、")}`,
     });
   } else {
+    const luHourNote = getLuHourRecommendationNote(day, input, profile.luBranch);
     scoreBreakdown.push({
       label: "有禄",
       points: 0,
       type: "info",
       detail: profile.luBranch
-        ? `生日年干${profile.yearGan}禄在${profile.luBranch}；本课年${day.yearZhi}、月${day.monthZhi}、日${day.dayZhi}未见禄${luClashesDayPillar ? `；且禄支${profile.luBranch}冲命主日支${profile.dayZhi}，不宜取禄日，可取禄月/禄时` : ""}`
+        ? `生日年干${profile.yearGan}禄在${profile.luBranch}；本课年${day.yearZhi}、月${day.monthZhi}、日${day.dayZhi}未见禄${luClashesDayPillar ? `；且禄支${profile.luBranch}冲命主日支${profile.dayZhi}，不宜取禄日，可取禄月/禄时` : ""}${luHourNote}`
         : "未识别生日年干禄位",
     });
   }
@@ -2921,10 +2922,21 @@ export function getGeneralRecommendedHours(day: AlmanacDay, input?: DateInput) {
 }
 
 function getRecommendedHours(day: AlmanacDay, avoidedBranches: string[], mountainBranch: string, luBranch: string, input?: DateInput) {
-  const hours = [];
+  const hours: Array<RecommendedHour & { priority?: number; order?: number }> = [];
   const timeAvoidance = getTimeAvoidanceBranches(input);
-  const allAvoidedBranches = [...new Set([...avoidedBranches, ...timeAvoidance.branches])];
+  const dayTimeClashBranch = SIX_CLASH[day.dayZhi];
+  const allAvoidedBranches = [...new Set([...avoidedBranches, ...timeAvoidance.branches, ...(dayTimeClashBranch ? [dayTimeClashBranch] : [])])];
+  const dateHasLu = Boolean(luBranch && [day.yearZhi, day.monthZhi, day.dayZhi].includes(luBranch));
+  const shouldPrioritizeLuHour = Boolean(luBranch && !dateHasLu);
   hours.push(...getNobleRecommendedHours(day, allAvoidedBranches));
+  if (shouldPrioritizeLuHour && !allAvoidedBranches.includes(luBranch) && !hours.some((item) => item.branch === luBranch)) {
+    hours.push({
+      branch: luBranch,
+      timeRange: HOUR_RANGES[luBranch],
+      relation: "禄时" as const,
+      detail: `相主规则：本课年、月、日未见禄，生日年干禄在${luBranch}，优先取${luBranch}时补禄`,
+    });
+  }
   const dayBranch = day.dayZhi;
   const harmonyBranch = SIX_HARMONY[dayBranch];
   if (harmonyBranch && !allAvoidedBranches.includes(harmonyBranch) && !hours.some((item) => item.branch === harmonyBranch)) {
@@ -2979,8 +2991,18 @@ function getRecommendedHours(day: AlmanacDay, avoidedBranches: string[], mountai
   }
 
   return hours
-    .filter((hour) => !isTimeStemControllingDayStem(day.dayGan, hour.branch))
-    .map((hour) => ({
+    .map((hour, order) => {
+      const conflict = getDayTimeConflictAssessment(day, hour.branch);
+      const priority = getRecommendedHourPriority(hour.relation, shouldPrioritizeLuHour && hour.branch === luBranch) - Math.abs(conflict.points);
+      return {
+        ...hour,
+        priority,
+        order,
+        detail: conflict.detail ? `${hour.detail}；${conflict.detail}` : hour.detail,
+      };
+    })
+    .sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0) || (left.order ?? 0) - (right.order ?? 0))
+    .map(({ priority: _priority, order: _order, ...hour }) => ({
       ...hour,
       segments: getHourSegments(day, hour.branch),
     }));
@@ -3010,7 +3032,7 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
     );
     const hitsTimeAvoidance = timeAvoidance.branches.includes(branch);
     const currentTimeAvoidanceDetails = timeAvoidance.details.filter((detail) => detail.startsWith(`${branch}时`));
-    const hitsTimeStemControl = isTimeStemControllingDayStem(day.dayGan, branch);
+    const dayTimeConflict = getDayTimeConflictAssessment(day, branch);
     const wouldOverAddHusband = husbandDateCount >= 1 && hitsHusband;
     const nobleInfo = getNobleHourInfo(day, branch);
     const hitsFemaleLu = branch === luBranch;
@@ -3041,7 +3063,8 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
     if (SIX_HARMONY[day.dayZhi] === branch) {
       priority += 14;
     }
-    if (hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance || hitsTimeStemControl) {
+    priority += dayTimeConflict.points;
+    if (hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance) {
       priority -= 200;
     }
     return {
@@ -3057,10 +3080,10 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
         dayGroup?.branches.includes(branch) && branch !== day.dayZhi ? `与所选日${day.dayZhi}成三合` : "",
         SIX_HARMONY[day.dayZhi] === branch ? `与所选日${day.dayZhi}成六合` : "",
         hitsTimeAvoidance ? `避开${currentTimeAvoidanceDetails.join("、")}` : "",
-        hitsTimeStemControl ? `${timeGanZhi.slice(0, 1)}时干克${day.dayGan}日干，不取` : "",
+        dayTimeConflict.detail,
       ].filter(Boolean).join("；") || "作为备选时辰"}`,
       priority,
-      blocked: hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance || hitsTimeStemControl,
+      blocked: hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance,
       hitsHusband,
       hitsChild,
       timeGanZhi,
@@ -3318,6 +3341,22 @@ function getTimeAvoidanceBranches(input?: DateInput) {
     branches: [...new Set(validItems.map((item) => item.branch))],
     details: validItems.map((item) => `${item.branch}时${item.detail}`),
   };
+}
+
+function getLuHourRecommendationNote(day: AlmanacDay, input: DateInput, luBranch: string) {
+  if (!luBranch) {
+    return "";
+  }
+  const blocks: string[] = [];
+  if (SIX_CLASH[day.dayZhi] === luBranch) {
+    blocks.push(`${luBranch}时与本日${day.dayZhi}日形成日时六冲`);
+  }
+  const timeAvoidance = getTimeAvoidanceBranches(input);
+  blocks.push(...timeAvoidance.details.filter((detail) => detail.startsWith(`${luBranch}时`)));
+  if (blocks.length > 0) {
+    return `；${luBranch}时虽为禄时，但${[...new Set(blocks)].join("；")}，不列入推荐时辰`;
+  }
+  return `；年月日未见禄时，可优先参考${luBranch}时补禄`;
 }
 
 function getHourSegments(day: AlmanacDay, branch: string): HourSegment[] {
@@ -3941,11 +3980,64 @@ function getTimeGanZhiByDayStem(dayStem: string, hourBranch: string) {
   return `${STEMS[(stemIndex + branchIndex) % STEMS.length]}${hourBranch}`;
 }
 
-function isTimeStemControllingDayStem(dayStem: string, hourBranch: string) {
-  const timeStem = getTimeGanZhiByDayStem(dayStem, hourBranch).slice(0, 1);
-  const timeElement = STEM_ELEMENTS[timeStem];
-  const dayElement = STEM_ELEMENTS[dayStem];
-  return Boolean(timeElement && dayElement && CONTROLS[timeElement] === dayElement);
+function getRecommendedHourPriority(relation: RecommendedHour["relation"], isNeededLuHour: boolean) {
+  if (isNeededLuHour) {
+    return 95;
+  }
+  switch (relation) {
+    case "阳贵":
+    case "阴贵":
+      return 90;
+    case "禄时":
+      return 76;
+    case "六合":
+      return 72;
+    case "三合":
+      return 68;
+    case "抉山":
+      return 64;
+    case "夫星/子嗣":
+      return 100;
+    case "夫星":
+    case "子嗣":
+      return 94;
+    default:
+      return 50;
+  }
+}
+
+function getDayTimeConflictAssessment(day: AlmanacDay, hourBranch: string) {
+  const timeGanZhi = getTimeGanZhiByDayStem(day.dayGan, hourBranch);
+  const timeStem = timeGanZhi.slice(0, 1);
+  const stemRelation = getMutualControlText(day.dayGan, STEM_ELEMENTS[day.dayGan], timeStem, STEM_ELEMENTS[timeStem], "干");
+  const branchRelation = getMutualControlText(day.dayZhi, BRANCH_ELEMENTS[day.dayZhi], hourBranch, BRANCH_ELEMENTS[hourBranch], "支");
+  const details: string[] = [];
+  let points = 0;
+  if (branchRelation) {
+    points -= 8;
+    details.push(`${branchRelation}，支相克扣8分`);
+  }
+  if (stemRelation) {
+    points -= 4;
+    details.push(`${stemRelation}，干相克扣4分`);
+  }
+  return {
+    points,
+    detail: details.length > 0 ? `日时五行${details.join("；")}，此时辰已降低优先级` : "",
+  };
+}
+
+function getMutualControlText(leftName: string, leftElement: string | undefined, rightName: string, rightElement: string | undefined, label: "干" | "支") {
+  if (!leftElement || !rightElement) {
+    return "";
+  }
+  if (CONTROLS[leftElement] === rightElement) {
+    return `日${label}${leftName}${leftElement}克时${label}${rightName}${rightElement}`;
+  }
+  if (CONTROLS[rightElement] === leftElement) {
+    return `时${label}${rightName}${rightElement}克日${label}${leftName}${leftElement}`;
+  }
+  return "";
 }
 
 function getYearSanShaMountains(yearBranch: string) {
