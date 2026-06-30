@@ -1771,7 +1771,7 @@ export function scoreMovingDay(day: AlmanacDay, input: DateInput): ScoredDay {
 
   const goldSymbolStar = getGoldSymbolStar(day);
   if (goldSymbolStar) {
-    const resolverForMalefic = getMajorAuspiciousResolverStars(day);
+    const resolverForMalefic = getMaleficSofteners(day, input);
     if (GOLD_SYMBOL_AUSPICIOUS.has(goldSymbolStar.star)) {
       const points = GOOD_TIER_FOUR_POINTS;
       score += points;
@@ -1787,7 +1787,7 @@ export function scoreMovingDay(day: AlmanacDay, input: DateInput): ScoredDay {
       const points = softenMaleficPenalty(basePoints, resolverForMalefic.length > 0);
       score += points;
       cautions.push(
-        `金符九星值${goldSymbolStar.star}，只作辅助扣分${resolverForMalefic.length > 0 ? "；同日得吉神，凶势减轻但不作完全化解" : "，正式乔迁慎用"}`
+        `金符九星值${goldSymbolStar.star}，只作辅助扣分${resolverForMalefic.length > 0 ? "；同日有吉曜或偷修日，凶势减轻但不作完全化解" : "，正式乔迁慎用"}`
       );
       scoreBreakdown.push({
         label: "金符九星",
@@ -2245,14 +2245,14 @@ export function applyUniversalDailyJudgments(scored: ScoredDay, input?: DateInpu
 
   if (includeXiu) {
     const baseXiuPoints = getXiuLuckPoints(scored.xiuLuck);
-    const resolverForMalefic = getMajorAuspiciousResolverStars(scored);
+    const resolverForMalefic = getMaleficSofteners(scored, input);
     const xiuPoints = softenMaleficPenalty(baseXiuPoints, resolverForMalefic.length > 0);
     scored.score += xiuPoints;
     if (xiuPoints > 0) {
       scored.reasons.push(`二十八星宿吉星：${scored.xiu}${scored.xiuAnimal}`);
     } else if (xiuPoints < 0) {
       scored.cautions.push(
-        `二十八星宿凶星：${scored.xiu}${scored.xiuAnimal}${resolverForMalefic.length > 0 ? "；同日得吉神，凶势减轻但不作完全化解" : ""}`
+        `二十八星宿凶星：${scored.xiu}${scored.xiuAnimal}${resolverForMalefic.length > 0 ? "；同日有吉曜或偷修日，凶势减轻但不作完全化解" : ""}`
       );
     }
     scored.scoreBreakdown.push({
@@ -2338,7 +2338,7 @@ function applySelectionSixClashes(scored: ScoredDay, input?: DateInput) {
 
   const familyHits = getHouseholdFamilyClashes(scored, input);
   if (familyHits.length > 0) {
-    const penalty = Math.min(60, familyHits.length * 18);
+    const penalty = familyHits.length * 3;
     scored.score -= penalty;
     const onsiteNotice = familyHits
       .flatMap((hit) => hit.notices)
@@ -2355,7 +2355,7 @@ function applySelectionSixClashes(scored: ScoredDay, input?: DateInput) {
       type: "penalty",
       detail: `${familyRulePrefix}；本日冲到${familyHits
         .map((hit) => hit.detail)
-        .join("；")}。若家里人口较多无法完全避开，对应人员当天不要在现场`,
+        .join("；")}。家属可不去现场，本项只作每人3分小幅扣分；对应人员当天不要在现场`,
     });
   } else if (isHouseholdPurpose(input.purpose)) {
     const memberCount = getValidHouseholdFamilyProfiles(input).length;
@@ -4105,4 +4105,16 @@ function getAuspiciousResolverStars(day: AlmanacDay) {
 function getMajorAuspiciousResolverStars(day: AlmanacDay) {
   const almanacStars = day.dayJiShen.filter((star) => MAJOR_AUSPICIOUS_STARS.has(star));
   return [...new Set([...almanacStars, ...getAuspiciousResolverStars(day)])];
+}
+
+function getMaleficSofteners(day: AlmanacDay, input?: DateInput) {
+  const stars = getMajorAuspiciousResolverStars(day);
+  if ((input?.purpose === "moving" || input?.purpose === "construction") && isRepairDay(day)) {
+    stars.push(BIG_REPAIR_DAYS.has(day.dayGanZhi) ? "大偷修日" : "小偷修日");
+  }
+  return [...new Set(stars)];
+}
+
+function isRepairDay(day: AlmanacDay) {
+  return BIG_REPAIR_DAYS.has(day.dayGanZhi) || Boolean(MINOR_REPAIR_TRAVEL_DAYS[day.dayGanZhi]);
 }
