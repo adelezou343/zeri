@@ -1637,30 +1637,18 @@ export function scoreMovingDay(day: AlmanacDay, input: DateInput): ScoredDay {
       label: "命主三煞日",
       points: 0,
       type: "info",
-      detail: `按出生支分组避三煞日时；命主年支${profile.yearZhi}、月支${profile.monthZhi}为主，日支${profile.dayZhi}${profile.hourZhi ? `、时支${profile.hourZhi}` : ""}为轻；本日${day.dayZhi}未命中`,
+      detail: `按客户年支${profile.yearZhi}、日支${profile.dayZhi}取对岸三合局为命主三煞；日支、时支命中强避，年支、月支命中只作小幅扣分。本日${day.dayZhi}未命中命主三煞日`,
     });
   }
 
-  if (sanSha?.sha.includes(day.dayZhi)) {
-    score -= 100;
-    eliminated = true;
-    cautions.push(`三煞日：${day.yearZhi}年煞在${sanSha.sha.join("、")}，本日为${day.dayZhi}日`);
-    scoreBreakdown.push({
-      label: "三煞日",
-      points: -100,
-      type: "eliminate",
-      detail: `${sanSha.label}（${sanSha.direction}）；本日地支${day.dayZhi}命中三煞日，按当前规则强避淘汰`,
-    });
-  } else {
-    scoreBreakdown.push({
-      label: "三煞日",
-      points: 0,
-      type: "info",
-      detail: sanSha
-        ? `${day.yearZhi}年${sanSha.label}，三煞方在${sanSha.direction}，三煞日为${sanSha.sha.join("、")}日；本日${day.dayZhi}日未命中`
-        : "未识别流年三煞规则",
-    });
-  }
+  scoreBreakdown.push({
+    label: "流年三煞参考",
+    points: 0,
+    type: "info",
+    detail: sanSha
+      ? `${day.yearZhi}年${sanSha.label}，三煞方在${sanSha.direction}，仅作背景参考；正式三煞日以客户年支、日支另判`
+      : "未识别流年三煞规则",
+  });
 
   if (TEN_BAD_DAYS.has(day.dayGanZhi)) {
     eliminated = true;
@@ -1930,7 +1918,7 @@ export function scoreMovingDay(day: AlmanacDay, input: DateInput): ScoredDay {
     reasons,
     cautions,
     scoreBreakdown,
-    recommendedHours: getRecommendedHours(day, sanSha?.sha ?? [], input.mountainBranch, profile.luBranch, input),
+    recommendedHours: getRecommendedHours(day, [], input.mountainBranch, profile.luBranch, input),
     remedies: [...new Set(remedies)],
     eliminated,
   };
@@ -2038,17 +2026,14 @@ export function applyDemolitionHardAvoidance(scored: ScoredDay, input?: DateInpu
   }
 
   const sanSha = getSanShaByBranch(scored.yearZhi);
-  if (sanSha?.sha.includes(scored.dayZhi)) {
-    scored.score -= 100;
-    scored.eliminated = true;
-    scored.cautions.push(`三煞日：${scored.yearZhi}年煞在${sanSha.sha.join("、")}，本日为${scored.dayZhi}日`);
-    scored.scoreBreakdown.push({
-      label: "三煞日",
-      points: -100,
-      type: "eliminate",
-      detail: `${sanSha.label}（${sanSha.direction}）；拆房破日也不可覆盖流年三煞日`,
-    });
-  }
+  scored.scoreBreakdown.push({
+    label: "流年三煞参考",
+    points: 0,
+    type: "info",
+    detail: sanSha
+      ? `${scored.yearZhi}年${sanSha.label}，三煞方在${sanSha.direction}，仅作背景参考；拆房命主三煞仍以客户年支、日支另判`
+      : "未识别流年三煞规则",
+  });
 
   if (TEN_BAD_DAYS.has(scored.dayGanZhi)) {
     scored.score -= 100;
@@ -2921,8 +2906,7 @@ function applyConstructionHostSelection(scored: ScoredDay, day: AlmanacDay, inpu
 
 export function getGeneralRecommendedHours(day: AlmanacDay, input?: DateInput) {
   const profile = input ? getMovingBirthProfile(input) : null;
-  const sanSha = getSanShaByBranch(day.yearZhi);
-  return getRecommendedHours(day, sanSha?.sha ?? [], input?.mountainBranch ?? "", profile?.luBranch ?? "", input);
+  return getRecommendedHours(day, [], input?.mountainBranch ?? "", profile?.luBranch ?? "", input);
 }
 
 function getRecommendedHours(day: AlmanacDay, avoidedBranches: string[], mountainBranch: string, luBranch: string, input?: DateInput) {
@@ -3014,6 +2998,7 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
         (groomProfile.fetalZhi && SIX_CLASH[groomProfile.fetalZhi] === branch)
     );
     const hitsTimeAvoidance = timeAvoidance.branches.includes(branch);
+    const currentTimeAvoidanceDetails = timeAvoidance.details.filter((detail) => detail.startsWith(`${branch}时`));
     const hitsTimeStemControl = isTimeStemControllingDayStem(day.dayGan, branch);
     const wouldOverAddHusband = husbandDateCount >= 1 && hitsHusband;
     const nobleInfo = getNobleHourInfo(day, branch);
@@ -3060,7 +3045,7 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
         hitsMaleLu ? `男命${groomProfile.yearGan}禄在${groomLuBranch}` : "",
         dayGroup?.branches.includes(branch) && branch !== day.dayZhi ? `与所选日${day.dayZhi}成三合` : "",
         SIX_HARMONY[day.dayZhi] === branch ? `与所选日${day.dayZhi}成六合` : "",
-        hitsTimeAvoidance ? `避开${timeAvoidance.details.join("、")}相冲` : "",
+        hitsTimeAvoidance ? `避开${currentTimeAvoidanceDetails.join("、")}` : "",
         hitsTimeStemControl ? `${timeGanZhi.slice(0, 1)}时干克${day.dayGan}日干，不取` : "",
       ].filter(Boolean).join("；") || "作为备选时辰"}`,
       priority,
@@ -3307,9 +3292,11 @@ function getTimeAvoidanceBranches(input?: DateInput) {
   }
 
   const profile = getMovingBirthProfile(input);
+  const birthSanShaAvoidBranches = getBirthSanShaAvoidBranches(profile);
   const items = [
     { branch: SIX_CLASH[profile.yearZhi], detail: `冲客户生肖${profile.yearZhi}` },
     { branch: SIX_CLASH[profile.dayZhi], detail: `冲客户日支${profile.dayZhi}` },
+    ...birthSanShaAvoidBranches.map((branch) => ({ branch, detail: `命主三煞时，客户年支${profile.yearZhi}、日支${profile.dayZhi}所避` })),
   ];
   if ((input.purpose === "moving" || input.purpose === "construction") && input.mountainBranch && isEarthlyBranch(input.mountainBranch)) {
     items.push({ branch: SIX_CLASH[input.mountainBranch], detail: `冲房屋坐山${input.mountainBranch}` });
@@ -3767,35 +3754,42 @@ function getMountainNumberPoints(number: number, isDay: boolean) {
 function getBirthSanShaDay(day: AlmanacDay, profile: MovingBirthProfile) {
   const hardHits: string[] = [];
   const softHits: string[] = [];
-  const yearRule = BIRTH_SAN_SHA_DAY_RULES.find((rule) => rule.source.includes(profile.yearZhi));
-  if (yearRule?.avoid.includes(day.dayZhi)) {
-    hardHits.push(`年支${profile.yearZhi}：${yearRule.label}`);
+  const rules = getBirthSanShaRules(profile);
+  const avoidBranches = getBirthSanShaAvoidBranches(profile);
+
+  if (avoidBranches.includes(day.dayZhi)) {
+    hardHits.push(`日支${day.dayZhi}命中${rules.map((rule) => rule.label).join("；")}`);
   }
-  const monthRule = BIRTH_SAN_SHA_DAY_RULES.find((rule) => rule.source.includes(profile.monthZhi));
-  if (monthRule?.avoid.includes(day.dayZhi)) {
-    hardHits.push(`月支${profile.monthZhi}：${monthRule.label}`);
+  if (avoidBranches.includes(day.yearZhi)) {
+    softHits.push(`年支${day.yearZhi}命中命主三煞`);
   }
-  const dayRule = BIRTH_SAN_SHA_DAY_RULES.find((rule) => rule.source.includes(profile.dayZhi));
-  if (dayRule?.avoid.includes(day.dayZhi)) {
-    softHits.push(`日支${profile.dayZhi}：${dayRule.label}`);
+  if (avoidBranches.includes(day.monthZhi)) {
+    softHits.push(`月支${day.monthZhi}命中命主三煞`);
   }
-  const hourRule = BIRTH_SAN_SHA_DAY_RULES.find((rule) => rule.source.includes(profile.hourZhi));
-  if (hourRule?.avoid.includes(day.dayZhi)) {
-    softHits.push(`时支${profile.hourZhi}：${hourRule.label}`);
-  }
-  const points = hardHits.length > 0 ? -100 : softHits.length > 0 ? -18 : 0;
+  const points = hardHits.length > 0 ? -100 : softHits.length * -6;
   const detailParts = [];
   if (hardHits.length > 0) {
-    detailParts.push(`${hardHits.join("；")}；本日为${day.dayZhi}日，命中年/月三煞日，按当前规则强避淘汰`);
+    detailParts.push(`客户年支${profile.yearZhi}、日支${profile.dayZhi}取对岸三合局为${avoidBranches.join("、")}；${hardHits.join("；")}，命主三煞日强避淘汰`);
   }
   if (softHits.length > 0) {
-    detailParts.push(`${softHits.join("；")}；日时三煞较轻，本日只作扣分提醒`);
+    detailParts.push(`${softHits.join("；")}，年/月层只作小幅扣分`);
   }
   return {
     points,
     eliminate: hardHits.length > 0,
     detail: detailParts.join("；"),
   };
+}
+
+function getBirthSanShaRules(profile: MovingBirthProfile) {
+  const rules = [profile.yearZhi, profile.dayZhi]
+    .map((branch) => BIRTH_SAN_SHA_DAY_RULES.find((rule) => rule.source.includes(branch)))
+    .filter((rule): rule is (typeof BIRTH_SAN_SHA_DAY_RULES)[number] => Boolean(rule));
+  return [...new Map(rules.map((rule) => [rule.label, rule])).values()];
+}
+
+function getBirthSanShaAvoidBranches(profile: MovingBirthProfile) {
+  return [...new Set(getBirthSanShaRules(profile).flatMap((rule) => rule.avoid))];
 }
 
 function getThreeFuneralSha(day: AlmanacDay) {

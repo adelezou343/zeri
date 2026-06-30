@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { addDays, formatDate } from "@/lib/calendar";
+import { addDays, formatDate, getAlmanacDay, getBirthSolarDate } from "@/lib/calendar";
 import { PURPOSE_RULES } from "@/lib/rules";
 import { evaluateCandidateDay, selectAuspiciousDays } from "@/lib/selection";
 import type { DateInput, FamilyMember, MountainBranch, Purpose, RecommendationResult, ScoredDay, TimeBranch } from "@/lib/types";
@@ -60,6 +60,12 @@ const CONTROLS: Record<string, string> = {
   火: "金",
   金: "木",
 };
+const BIRTH_SAN_SHA_RULES = [
+  { source: ["巳", "午", "未"], avoid: ["申", "子", "辰"], label: "巳午未避申子辰" },
+  { source: ["申", "酉", "戌"], avoid: ["亥", "卯", "未"], label: "申酉戌避亥卯未" },
+  { source: ["亥", "子", "丑"], avoid: ["寅", "午", "戌"], label: "亥子丑避寅午戌" },
+  { source: ["寅", "卯", "辰"], avoid: ["巳", "酉", "丑"], label: "寅卯辰避巳酉丑" },
+];
 const SIX_CLASH_BRANCHES: Record<string, string> = {
   子: "午",
   午: "子",
@@ -127,7 +133,7 @@ const ENCYCLOPEDIA_SECTIONS = [
       { name: "日课四柱六冲", detail: "候选日课自身年、月、日三柱之间出现六冲，按强避处理。" },
       { name: "杨公忌日", detail: "按农历固定 13 日强避：正月十三、二月十一、三月初九、四月初七、五月初五、六月初三、七月初一、七月廿九、八月廿七、九月廿五、十月廿三、十一月廿一、十二月十九。" },
       { name: "红砂日", detail: "1/4/7/10 月逢酉日，2/5/8/11 月逢巳日，3/6/9/12 月逢丑日，强避。" },
-      { name: "三煞", detail: "三煞择日重点看年、月两层；命主年支、月支命中时按强避处理。日支、时支三煞较轻，只作扣分提醒，不单独淘汰。" },
+      { name: "三煞", detail: "命主三煞看客户年支和日支，取其对岸三合局为三煞支。例如年支或日支为子，则避寅午戌。日课日支或所选时支命中为强避；日课年支、月支命中只作小幅扣分。" },
       { name: "金神日", detail: "乙丑、己巳、癸酉为日柱金神；二十八宿亢、牛、娄、鬼四金宿为金神七煞，择日时列为强避。" },
       { name: "复日", detail: "按建月判断：正月甲、二月乙、三月戊、四月丙、五月丁、六月己、七月庚、八月辛、九月戊、十月壬、十一月癸、十二月己。正式乔迁和建房开工强避。" },
       { name: "四绝四离", detail: "立春、立夏、立秋、立冬前一日为四绝；春分、夏至、秋分、冬至前一日为四离，强避。普通节气不参与评分。" },
@@ -340,7 +346,7 @@ function getUnsuitableReasons(day: ScoredDay) {
 }
 
 function dedupeReviewCautions(items: string[]) {
-  const hasHostSanSha = items.some((item) => item.includes("命主三煞日") || item.includes("命中年/月三煞日"));
+  const hasHostSanSha = items.some((item) => item.includes("命主三煞"));
   const hasSoftDayHourSanSha = items.some((item) => item.includes("日时三煞较轻") || item.includes("只作扣分提醒"));
   return items.filter((item) => !((hasHostSanSha || hasSoftDayHourSanSha) && item.startsWith("三煞日：")));
 }
@@ -406,13 +412,14 @@ function getCustomerReviewReasons(day: ScoredDay, result: RecommendationResult, 
   return reasons.slice(0, 5);
 }
 
-function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch) {
+function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch, form: DateInput) {
   if (!timeBranch) {
     return ["未填写自选时辰，本次只复核日期本身。"];
   }
 
   const timeGanZhi = getTimeGanZhiText(day.dayGan, timeBranch);
   const timeStemControl = getTimeStemControlText(day.dayGan, timeGanZhi);
+  const birthSanShaTimeControl = getBirthSanShaTimeControlText(form, timeBranch);
   const matchedHour = day.recommendedHours.find((hour) => hour.branch === timeBranch);
   if (matchedHour) {
     const items = [`${timeGanZhi}时在本日推荐时辰内，取用为${matchedHour.relation}：${matchedHour.detail}`];
@@ -430,12 +437,14 @@ function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch) {
     return [
       `${timeGanZhi}时未列入推荐，本日也没有可展示的推荐时辰。`,
       ...(timeStemControl ? [timeStemControl] : []),
+      ...(birthSanShaTimeControl ? [birthSanShaTimeControl] : []),
     ];
   }
 
   return [
     `${timeGanZhi}时未列入本日推荐时辰。`,
     ...(timeStemControl ? [timeStemControl] : []),
+    ...(birthSanShaTimeControl ? [birthSanShaTimeControl] : []),
     `本日可参考的时辰：${day.recommendedHours.slice(0, 5).map((hour) => `${getTimeGanZhiText(day.dayGan, hour.branch)}时${hour.timeRange}（${hour.relation}）`).join("、")}。`,
   ];
 }
@@ -470,6 +479,21 @@ function getTimeStemControlText(dayStem: string, timeGanZhi: string) {
     return "";
   }
   return `择时规则：${timeStem}时干克${dayStem}日干，此时不取。`;
+}
+
+function getBirthSanShaTimeControlText(form: DateInput, timeBranch: TimeBranch) {
+  if (!timeBranch) {
+    return "";
+  }
+  const birthDay = getAlmanacDay(getBirthSolarDate(form));
+  const rules = [birthDay.yearZhi, birthDay.dayZhi]
+    .map((branch) => BIRTH_SAN_SHA_RULES.find((rule) => rule.source.includes(branch)))
+    .filter((rule): rule is (typeof BIRTH_SAN_SHA_RULES)[number] => Boolean(rule));
+  const avoidBranches = [...new Set(rules.flatMap((rule) => rule.avoid))];
+  if (!avoidBranches.includes(timeBranch)) {
+    return "";
+  }
+  return `命主三煞时：客户年支${birthDay.yearZhi}、日支${birthDay.dayZhi}取${avoidBranches.join("、")}为三煞支，${timeBranch}时命中，按强避不取。`;
 }
 
 function buildAnalysisItems(day: ScoredDay) {
@@ -757,7 +781,7 @@ export default function Home() {
             <article>
               <strong>时辰复核</strong>
               <ul>
-                {getCustomerHourReview(customerReviewDay, customerTimeBranch).map((item) => (
+                {getCustomerHourReview(customerReviewDay, customerTimeBranch, getEffectiveForm(form)).map((item) => (
                   <li key={`customer-hour-review-${item}`}>{item}</li>
                 ))}
               </ul>
