@@ -41,6 +41,25 @@ const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const withBasePath = (path: string) => `${BASE_PATH}${path}`;
 const STEMS = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
 const BRANCHES = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
+const STEM_ELEMENTS: Record<string, string> = {
+  甲: "木",
+  乙: "木",
+  丙: "火",
+  丁: "火",
+  戊: "土",
+  己: "土",
+  庚: "金",
+  辛: "金",
+  壬: "水",
+  癸: "水",
+};
+const CONTROLS: Record<string, string> = {
+  木: "土",
+  土: "水",
+  水: "火",
+  火: "金",
+  金: "木",
+};
 const SIX_CLASH_BRANCHES: Record<string, string> = {
   子: "午",
   午: "子",
@@ -393,6 +412,7 @@ function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch) {
   }
 
   const timeGanZhi = getTimeGanZhiText(day.dayGan, timeBranch);
+  const timeStemControl = getTimeStemControlText(day.dayGan, timeGanZhi);
   const matchedHour = day.recommendedHours.find((hour) => hour.branch === timeBranch);
   if (matchedHour) {
     const items = [`${timeGanZhi}时在本日推荐时辰内，取用为${matchedHour.relation}：${matchedHour.detail}`];
@@ -407,11 +427,15 @@ function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch) {
   }
 
   if (day.recommendedHours.length === 0) {
-    return [`${timeGanZhi}时未列入推荐，本日也没有可展示的推荐时辰。`];
+    return [
+      `${timeGanZhi}时未列入推荐，本日也没有可展示的推荐时辰。`,
+      ...(timeStemControl ? [timeStemControl] : []),
+    ];
   }
 
   return [
     `${timeGanZhi}时未列入本日推荐时辰。`,
+    ...(timeStemControl ? [timeStemControl] : []),
     `本日可参考的时辰：${day.recommendedHours.slice(0, 5).map((hour) => `${getTimeGanZhiText(day.dayGan, hour.branch)}时${hour.timeRange}（${hour.relation}）`).join("、")}。`,
   ];
 }
@@ -436,6 +460,16 @@ function getTimeGanZhiText(dayStem: string, hourBranch: string) {
     return `${hourBranch}`;
   }
   return `${STEMS[(stemIndex + branchIndex) % STEMS.length]}${hourBranch}`;
+}
+
+function getTimeStemControlText(dayStem: string, timeGanZhi: string) {
+  const timeStem = timeGanZhi.slice(0, 1);
+  const timeElement = STEM_ELEMENTS[timeStem];
+  const dayElement = STEM_ELEMENTS[dayStem];
+  if (!timeElement || !dayElement || CONTROLS[timeElement] !== dayElement) {
+    return "";
+  }
+  return `择时规则：${timeStem}时干克${dayStem}日干，此时不取。`;
 }
 
 function buildAnalysisItems(day: ScoredDay) {

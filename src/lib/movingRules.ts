@@ -2983,10 +2983,12 @@ function getRecommendedHours(day: AlmanacDay, avoidedBranches: string[], mountai
     });
   }
 
-  return hours.map((hour) => ({
-    ...hour,
-    segments: getHourSegments(day, hour.branch),
-  }));
+  return hours
+    .filter((hour) => !isTimeStemControllingDayStem(day.dayGan, hour.branch))
+    .map((hour) => ({
+      ...hour,
+      segments: getHourSegments(day, hour.branch),
+    }));
 }
 
 function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
@@ -3012,6 +3014,7 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
         (groomProfile.fetalZhi && SIX_CLASH[groomProfile.fetalZhi] === branch)
     );
     const hitsTimeAvoidance = timeAvoidance.branches.includes(branch);
+    const hitsTimeStemControl = isTimeStemControllingDayStem(day.dayGan, branch);
     const wouldOverAddHusband = husbandDateCount >= 1 && hitsHusband;
     const nobleInfo = getNobleHourInfo(day, branch);
     const hitsFemaleLu = branch === luBranch;
@@ -3042,7 +3045,7 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
     if (SIX_HARMONY[day.dayZhi] === branch) {
       priority += 14;
     }
-    if (hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance) {
+    if (hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance || hitsTimeStemControl) {
       priority -= 200;
     }
     return {
@@ -3058,9 +3061,10 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
         dayGroup?.branches.includes(branch) && branch !== day.dayZhi ? `与所选日${day.dayZhi}成三合` : "",
         SIX_HARMONY[day.dayZhi] === branch ? `与所选日${day.dayZhi}成六合` : "",
         hitsTimeAvoidance ? `避开${timeAvoidance.details.join("、")}相冲` : "",
+        hitsTimeStemControl ? `${timeGanZhi.slice(0, 1)}时干克${day.dayGan}日干，不取` : "",
       ].filter(Boolean).join("；") || "作为备选时辰"}`,
       priority,
-      blocked: hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance,
+      blocked: hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance || hitsTimeStemControl,
       hitsHusband,
       hitsChild,
       timeGanZhi,
@@ -3923,6 +3927,13 @@ function getTimeGanZhiByDayStem(dayStem: string, hourBranch: string) {
     return "";
   }
   return `${STEMS[(stemIndex + branchIndex) % STEMS.length]}${hourBranch}`;
+}
+
+function isTimeStemControllingDayStem(dayStem: string, hourBranch: string) {
+  const timeStem = getTimeGanZhiByDayStem(dayStem, hourBranch).slice(0, 1);
+  const timeElement = STEM_ELEMENTS[timeStem];
+  const dayElement = STEM_ELEMENTS[dayStem];
+  return Boolean(timeElement && dayElement && CONTROLS[timeElement] === dayElement);
 }
 
 function getYearSanShaMountains(yearBranch: string) {
