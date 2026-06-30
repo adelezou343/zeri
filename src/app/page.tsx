@@ -39,6 +39,8 @@ const HOST_CORE_PURPOSES: Purpose[] = ["moving", "construction"];
 const FAMILY_INFO_PURPOSES: Purpose[] = ["moving", "construction", "enshrinement", "general"];
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const withBasePath = (path: string) => `${BASE_PATH}${path}`;
+const STEMS = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
+const BRANCHES = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
 const SIX_CLASH_BRANCHES: Record<string, string> = {
   子: "午",
   午: "子",
@@ -74,7 +76,7 @@ const ENCYCLOPEDIA_SECTIONS = [
     items: [
       { name: "生日历法", detail: "可填阳历或阴历生日。若填阳历，系统先换算为阴历，再展示对应阴历生日和八字。" },
       { name: "真太阳时", detail: "出生地和经度均为选填。填写出生地或经度，并填写出生具体时间后，系统按真太阳时校正；都不填则默认北京时间。" },
-      { name: "输出日期", detail: "推荐日以阴历日期为主，阳历只作日历参考；日课显示年柱、月柱、日柱和推荐时辰。" },
+      { name: "输出日期", detail: "推荐日以阴历日期为主，阳历只作日历参考；日课显示年柱、月柱、日柱和推荐时柱。" },
       { name: "资料总表", detail: "日课统计显化表作为规则总表来源，不再单独作为一个分类承载所有规则；具体规则按用途分别放在取用、避忌、辅助参考等栏目。" },
     ],
   },
@@ -331,7 +333,7 @@ function isWithinSelectedRange(date: string, form: DateInput) {
 function getCustomerReviewConclusion(day: ScoredDay, result: RecommendationResult, form: DateInput, timeBranch: TimeBranch) {
   const inRecommendations = result.recommendations.some((item) => item.date === day.date);
   const outsideRange = !isWithinSelectedRange(day.date, form);
-  const timeText = timeBranch ? `，已同时复核${timeBranch}时` : "";
+  const timeText = timeBranch ? `，已同时复核${getTimeGanZhiText(day.dayGan, timeBranch)}时` : "";
 
   if (inRecommendations) {
     return `此日已在本次备选中，可按推荐解析继续复核${timeText}。`;
@@ -390,9 +392,10 @@ function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch) {
     return ["未填写自选时辰，本次只复核日期本身。"];
   }
 
+  const timeGanZhi = getTimeGanZhiText(day.dayGan, timeBranch);
   const matchedHour = day.recommendedHours.find((hour) => hour.branch === timeBranch);
   if (matchedHour) {
-    const items = [`${timeBranch}时在本日推荐时辰内，取用为${matchedHour.relation}：${matchedHour.detail}`];
+    const items = [`${timeGanZhi}时在本日推荐时辰内，取用为${matchedHour.relation}：${matchedHour.detail}`];
     if (matchedHour.segments && matchedHour.segments.length > 0) {
       items.push(
         `选刻参考：${matchedHour.segments
@@ -404,13 +407,35 @@ function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch) {
   }
 
   if (day.recommendedHours.length === 0) {
-    return [`${timeBranch}时未列入推荐，本日也没有可展示的推荐时辰。`];
+    return [`${timeGanZhi}时未列入推荐，本日也没有可展示的推荐时辰。`];
   }
 
   return [
-    `${timeBranch}时未列入本日推荐时辰。`,
-    `本日可参考的时辰：${day.recommendedHours.slice(0, 5).map((hour) => `${hour.branch}时${hour.timeRange}（${hour.relation}）`).join("、")}。`,
+    `${timeGanZhi}时未列入本日推荐时辰。`,
+    `本日可参考的时辰：${day.recommendedHours.slice(0, 5).map((hour) => `${getTimeGanZhiText(day.dayGan, hour.branch)}时${hour.timeRange}（${hour.relation}）`).join("、")}。`,
   ];
+}
+
+function getTimeGanZhiText(dayStem: string, hourBranch: string) {
+  const startStemByDayStem: Record<string, string> = {
+    甲: "甲",
+    己: "甲",
+    乙: "丙",
+    庚: "丙",
+    丙: "戊",
+    辛: "戊",
+    丁: "庚",
+    壬: "庚",
+    戊: "壬",
+    癸: "壬",
+  };
+  const startStem = startStemByDayStem[dayStem];
+  const branchIndex = BRANCHES.indexOf(hourBranch);
+  const stemIndex = STEMS.indexOf(startStem);
+  if (!startStem || branchIndex < 0 || stemIndex < 0) {
+    return `${hourBranch}`;
+  }
+  return `${STEMS[(stemIndex + branchIndex) % STEMS.length]}${hourBranch}`;
 }
 
 function buildAnalysisItems(day: ScoredDay) {
@@ -1278,7 +1303,7 @@ export default function Home() {
                         {day.recommendedHours.map((hour) => (
                           <li key={`${day.date}-${hour.branch}-${hour.relation}`}>
                             <strong>
-                              {hour.branch}时 {hour.timeRange} · {hour.relation}
+                              {getTimeGanZhiText(day.dayGan, hour.branch)}时 {hour.timeRange} · {hour.relation}
                             </strong>
                             {hour.segments && hour.segments.length > 0 ? (
                               <div className="segment-list">
@@ -1406,7 +1431,7 @@ export default function Home() {
                       <div className="trace-hours">
                         {day.recommendedHours.map((hour) => (
                           <span key={`${day.date}-trace-${hour.branch}`}>
-                            {hour.branch}时 {hour.timeRange}：{hour.detail}
+                            {getTimeGanZhiText(day.dayGan, hour.branch)}时 {hour.timeRange}：{hour.detail}
                             {hour.segments && hour.segments.length > 0
                               ? `；选刻：${hour.segments
                                   .map((segment) => `${segment.name}${segment.timeRange}${segment.spirits.join("/")}`)
