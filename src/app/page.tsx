@@ -37,6 +37,8 @@ const MOUNTAIN_BRANCHES: MountainBranch[] = [
 const PURPOSES: Purpose[] = ["wedding", "moving", "demolition", "construction", "enshrinement", "general"];
 const HOST_CORE_PURPOSES: Purpose[] = ["moving", "construction"];
 const FAMILY_INFO_PURPOSES: Purpose[] = ["moving", "construction", "enshrinement", "general"];
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const withBasePath = (path: string) => `${BASE_PATH}${path}`;
 const SIX_CLASH_BRANCHES: Record<string, string> = {
   子: "午",
   午: "子",
@@ -728,7 +730,7 @@ export default function Home() {
 
       <main className="page-shell">
         <section className="hero-title">
-          <img className="hero-main-image" src="/wannianhong-hero.png?v=user-tuned" alt="万年红·福主日课，风水师专用择日工具" />
+          <img className="hero-main-image" src={withBasePath("/wannianhong-hero.png?v=user-tuned")} alt="万年红·福主日课，风水师专用择日工具" />
         </section>
 
         <section className="exclusive-note" aria-label="日课专用说明">
@@ -1487,7 +1489,7 @@ export default function Home() {
             <p>如对候选日、择时、客户资料填写或规则复核有疑问，可扫码添加微信沟通。</p>
           </div>
           <div className="wechat-card">
-            <img src="/wechat-qr.png" alt="微信二维码" />
+            <img src={withBasePath("/wechat-qr.png")} alt="微信二维码" />
             <strong>微信咨询</strong>
             <small>扫码添加，说明择日事项和客户资料</small>
           </div>
