@@ -876,7 +876,6 @@ const JIA_ZI = [
 
 const GOLD_SYMBOL_STARS = ["妖星", "惑星", "禾刀", "煞贡", "直星", "卜木", "角己", "人专", "立早"];
 const GOLD_SYMBOL_AUSPICIOUS = new Set(["煞贡", "直星", "人专"]);
-const GOLD_SYMBOL_MAJOR_INAUSPICIOUS = new Set(["妖星", "惑星", "禾刀"]);
 const GOLD_SYMBOL_START_INDEX_BY_MONTH: Record<number, number> = {
   1: 0,
   4: 0,
@@ -899,9 +898,9 @@ const GOLD_SYMBOL_STAR_DETAILS: Record<string, string> = {
   妖星: "六凶星之一，正式乔迁、开火、安床、入住过夜不建议选用。",
   惑星: "六凶星之一，正式乔迁、开火、安床、入住过夜不建议选用。",
   禾刀: "六凶星之一，正式乔迁、开火、安床、入住过夜不建议选用。",
-  卜木: "六凶星之一，乔迁不优先，只作扣分参考。",
-  角己: "六凶星之一，乔迁不优先，只作扣分参考。",
-  立早: "六凶星之一，乔迁不优先，只作扣分参考。",
+  卜木: "六凶星之一，乔迁不优先，只作辅助扣分。",
+  角己: "六凶星之一，乔迁不优先，只作辅助扣分。",
+  立早: "六凶星之一，乔迁不优先，只作辅助扣分。",
 };
 
 export type MovingBirthProfile = {
@@ -1772,6 +1771,7 @@ export function scoreMovingDay(day: AlmanacDay, input: DateInput): ScoredDay {
 
   const goldSymbolStar = getGoldSymbolStar(day);
   if (goldSymbolStar) {
+    const resolverForMalefic = getMajorAuspiciousResolverStars(day);
     if (GOLD_SYMBOL_AUSPICIOUS.has(goldSymbolStar.star)) {
       const points = GOOD_TIER_FOUR_POINTS;
       score += points;
@@ -1783,14 +1783,19 @@ export function scoreMovingDay(day: AlmanacDay, input: DateInput): ScoredDay {
         detail: `${goldSymbolStar.detail}。${GOLD_SYMBOL_STAR_DETAILS[goldSymbolStar.star]}；金符九星吉星列入第四梯队，只在大忌已避开后锦上添花`,
       });
     } else {
-      const points = GOLD_SYMBOL_MAJOR_INAUSPICIOUS.has(goldSymbolStar.star) ? -20 : -8;
+      const basePoints = -GOOD_TIER_THREE_POINTS;
+      const points = softenMaleficPenalty(basePoints, resolverForMalefic.length > 0);
       score += points;
-      cautions.push(`金符九星值${goldSymbolStar.star}，正式乔迁慎用`);
+      cautions.push(
+        `金符九星值${goldSymbolStar.star}，只作辅助扣分${resolverForMalefic.length > 0 ? "；同日得吉神，凶势减轻但不作完全化解" : "，正式乔迁慎用"}`
+      );
       scoreBreakdown.push({
         label: "金符九星",
         points,
         type: "penalty",
-        detail: `${goldSymbolStar.detail}。${GOLD_SYMBOL_STAR_DETAILS[goldSymbolStar.star]}`,
+        detail: `${goldSymbolStar.detail}。${GOLD_SYMBOL_STAR_DETAILS[goldSymbolStar.star]}；金符九星六凶权重不超过12分${
+          resolverForMalefic.length > 0 ? `；同日得${resolverForMalefic.join("、")}，可减其凶势，但不作完全化解论` : ""
+        }`,
       });
     }
   } else {
@@ -2239,18 +2244,24 @@ export function applyUniversalDailyJudgments(scored: ScoredDay, input?: DateInpu
   }
 
   if (includeXiu) {
-    const xiuPoints = getXiuLuckPoints(scored.xiuLuck);
+    const baseXiuPoints = getXiuLuckPoints(scored.xiuLuck);
+    const resolverForMalefic = getMajorAuspiciousResolverStars(scored);
+    const xiuPoints = softenMaleficPenalty(baseXiuPoints, resolverForMalefic.length > 0);
     scored.score += xiuPoints;
     if (xiuPoints > 0) {
       scored.reasons.push(`二十八星宿吉星：${scored.xiu}${scored.xiuAnimal}`);
     } else if (xiuPoints < 0) {
-      scored.cautions.push(`二十八星宿凶星：${scored.xiu}${scored.xiuAnimal}`);
+      scored.cautions.push(
+        `二十八星宿凶星：${scored.xiu}${scored.xiuAnimal}${resolverForMalefic.length > 0 ? "；同日得吉神，凶势减轻但不作完全化解" : ""}`
+      );
     }
     scored.scoreBreakdown.push({
       label: "二十八星宿",
       points: xiuPoints,
       type: xiuPoints > 0 ? "bonus" : xiuPoints < 0 ? "penalty" : "info",
-      detail: `本日星宿：${scored.xiu || "未识别"}${scored.xiuAnimal || ""}，万年历判定：${scored.xiuLuck || "未识别"}。${XIU_LUCK_EXPLANATIONS[scored.xiuLuck] ?? "按二十八星宿吉凶表展示判断"}；吉星列入第四梯队，凶星作第四梯队辅助扣分`,
+      detail: `本日星宿：${scored.xiu || "未识别"}${scored.xiuAnimal || ""}，万年历判定：${scored.xiuLuck || "未识别"}。${XIU_LUCK_EXPLANATIONS[scored.xiuLuck] ?? "按二十八星宿吉凶表展示判断"}；吉星列入第四梯队，凶星作第四梯队辅助扣分${
+        baseXiuPoints < 0 && resolverForMalefic.length > 0 ? `；同日得${resolverForMalefic.join("、")}，可减其凶势，但不作完全化解论` : ""
+      }`,
     });
   }
 
@@ -3627,6 +3638,13 @@ function getXiuLuckPoints(luck: string) {
   }
 }
 
+function softenMaleficPenalty(points: number, hasResolver: boolean) {
+  if (!hasResolver || points >= 0) {
+    return points;
+  }
+  return roundScore(points / 2);
+}
+
 function roundScore(value: number) {
   return Math.round(value * 10) / 10;
 }
@@ -4082,4 +4100,9 @@ function getAuspiciousResolverStars(day: AlmanacDay) {
   return Object.entries(monthTable)
     .filter(([, value]) => day.dayGan === value || day.dayZhi === value)
     .map(([name, value]) => `${name}(${value})`);
+}
+
+function getMajorAuspiciousResolverStars(day: AlmanacDay) {
+  const almanacStars = day.dayJiShen.filter((star) => MAJOR_AUSPICIOUS_STARS.has(star));
+  return [...new Set([...almanacStars, ...getAuspiciousResolverStars(day)])];
 }

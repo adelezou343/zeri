@@ -104,7 +104,6 @@ a {
   color: var(--imperial-red);
 }
 
-.account-button,
 .secondary-action {
   display: inline-flex;
   min-height: 42px;
@@ -115,12 +114,6 @@ a {
   border: 0;
   font-weight: 700;
   transition: transform 160ms ease, opacity 160ms ease, background 160ms ease;
-}
-
-.account-button {
-  background: var(--imperial-red);
-  color: #ffffff;
-  padding: 8px 18px;
 }
 
 .secondary-action span {
@@ -144,7 +137,6 @@ a {
   background: rgba(143, 0, 13, 0.06);
 }
 
-.account-button:hover,
 .secondary-action:hover {
   transform: translateY(-1px);
 }
@@ -1704,11 +1696,6 @@ button:focus-visible {
 
   .brand {
     font-size: 1.3rem;
-  }
-
-  .account-button {
-    padding: 7px 12px;
-    font-size: 0.9rem;
   }
 
   .page-shell {

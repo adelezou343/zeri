@@ -145,8 +145,8 @@ const ENCYCLOPEDIA_SECTIONS = [
     title: "辅助参考",
     items: [
       { name: "天德/月德", detail: "按月支查天德、月德、天德合、月德合。天德、月德权重高于合星。" },
-      { name: "金符九星", detail: "只作辅助参考，不能单独决定日子。三吉星为煞贡、直星、人专；凶星只作辅助扣分。" },
-      { name: "二十八星宿", detail: "按万年历返回的星宿吉凶判断；吉星小幅加分，凶星辅助扣分，不单独决定吉凶。" },
+      { name: "金符九星", detail: "只作辅助参考，不能单独决定日子。三吉星为煞贡、直星、人专；六凶星最多只作 12 分辅助扣分。若同日得天德、月德、天德合、月德合，可减其凶势，但不作完全化解论。" },
+      { name: "二十八星宿", detail: "按万年历返回的星宿吉凶判断；吉星小幅加分，凶星辅助扣分，不单独决定吉凶。若同日得天德、月德、天德合、月德合，可减其凶势，但不作完全化解论。" },
       { name: "六十甲子纳音吉凶表", detail: "按日柱和推荐时辰的时柱查表，作为判断依据，不单独加减分。" },
       { name: "建除十二神", detail: "建除十二神仅作参考；其中破日、闭日在乔迁和建房中权重较高。" },
       { name: "大偷修日 / 小偷修日", detail: "偷修日列入好日子第二梯队；建房修造时权重上升。" },
@@ -805,9 +805,6 @@ export default function Home() {
             <a className={activeNav === "encyclopedia" ? "active" : ""} href="#encyclopedia">百科</a>
             <a href="#service">服务</a>
           </nav>
-          <button className="account-button" type="button">
-            个人中心
-          </button>
         </div>
       </header>
 
