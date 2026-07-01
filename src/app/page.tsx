@@ -225,7 +225,7 @@ const ENCYCLOPEDIA_SECTIONS = [
     title: "择时",
     items: [
       { name: "择时顺序", detail: "先选日，选好日后再选时；时辰确定后，再按日干与时支查选刻表，分上刻、中刻、下刻。" },
-      { name: "择时来源", detail: "择完日后先选时，再选刻。择时主规则为贵人登天表：按日干和准确交节时间所在节气段取阳贵、阴贵，白天用阳贵，夜晚用阴贵；明显白天不取阴贵，明显夜晚不取阳贵，黎明傍晚保留复核。若年月日未见禄，优先补禄时，但不覆盖命主三煞、日时六冲等硬避。日时支相克扣分，日时干相克扣分减半。若不命中贵人登天，也可看六合、三合、抉山吉时、禄时等辅助时。结婚择时仍先满足夫星/子嗣硬条件。" },
+      { name: "择时来源", detail: "择完日后先选时，再选刻。择时主规则为贵人登天表：按日干和准确交节时间所在节气段取阳贵、阴贵，白天用阳贵，夜晚用阴贵；明显白天不取阴贵，明显夜晚不取阳贵，黎明傍晚保留复核。若年月日未见禄，优先补禄时，但不覆盖命主三煞、日时六冲等硬避。结果分为推荐时辰和禁忌时辰：命主三煞时、冲客户或坐山、日时六冲、日支与时支相克归入禁忌时辰；日时干相克只降低推荐优先级。若不命中贵人登天，也可看六合、三合、抉山吉时、禄时等辅助时。结婚择时仍先满足夫星/子嗣硬条件。" },
       { name: "选刻表", detail: "左侧取日干，顶部取时支；每个时辰 120 分钟分三刻：上刻前 40 分钟，中刻中间 40 分钟，下刻后 40 分钟。按表内神煞字样标记优先、避开或参考。" },
     ],
   },
@@ -434,9 +434,13 @@ function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch, form: Dat
   const timeGanZhi = getTimeGanZhiText(day.dayGan, timeBranch);
   const dayTimeConflict = getDayTimeConflictReviewText(day, timeBranch, timeGanZhi);
   const birthSanShaTimeControl = getBirthSanShaTimeControlText(form, timeBranch);
+  const forbiddenHour = day.forbiddenHours?.find((hour) => hour.branch === timeBranch);
   const matchedHour = day.recommendedHours.find((hour) => hour.branch === timeBranch);
   if (matchedHour) {
     const items = [`${timeGanZhi}时在本日推荐时辰内，取用为${matchedHour.relation}：${matchedHour.detail}`];
+    if (forbiddenHour) {
+      items.push(`同时需注意：${timeGanZhi}时列入禁忌时辰，原因是${forbiddenHour.detail}。`);
+    }
     if (matchedHour.segments && matchedHour.segments.length > 0) {
       items.push(
         `选刻参考：${matchedHour.segments
@@ -450,15 +454,17 @@ function getCustomerHourReview(day: ScoredDay, timeBranch: TimeBranch, form: Dat
   if (day.recommendedHours.length === 0) {
     return [
       `${timeGanZhi}时未列入推荐，本日也没有可展示的推荐时辰。`,
-      ...(dayTimeConflict ? [dayTimeConflict] : []),
-      ...(birthSanShaTimeControl ? [birthSanShaTimeControl] : []),
+      ...(forbiddenHour ? [`${timeGanZhi}时列入禁忌时辰：${forbiddenHour.detail}。`] : []),
+      ...(!forbiddenHour && dayTimeConflict ? [dayTimeConflict] : []),
+      ...(!forbiddenHour && birthSanShaTimeControl ? [birthSanShaTimeControl] : []),
     ];
   }
 
   return [
     `${timeGanZhi}时未列入本日推荐时辰。`,
-    ...(dayTimeConflict ? [dayTimeConflict] : []),
-    ...(birthSanShaTimeControl ? [birthSanShaTimeControl] : []),
+    ...(forbiddenHour ? [`${timeGanZhi}时列入禁忌时辰：${forbiddenHour.detail}。`] : []),
+    ...(!forbiddenHour && dayTimeConflict ? [dayTimeConflict] : []),
+    ...(!forbiddenHour && birthSanShaTimeControl ? [birthSanShaTimeControl] : []),
     `本日可参考的时辰：${day.recommendedHours.slice(0, 5).map((hour) => `${getTimeGanZhiText(day.dayGan, hour.branch)}时${hour.timeRange}（${hour.relation}）`).join("、")}。`,
   ];
 }
@@ -1407,6 +1413,25 @@ export default function Home() {
                     </section>
                   ) : null}
 
+                  {day.forbiddenHours && day.forbiddenHours.length > 0 ? (
+                    <section className="time-block forbidden-time-block">
+                      <h3 className="font-noto">
+                        <span aria-hidden="true">忌</span>
+                        禁忌时辰
+                      </h3>
+                      <ul>
+                        {day.forbiddenHours.map((hour) => (
+                          <li key={`${day.date}-forbidden-${hour.branch}`}>
+                            <strong>
+                              {getTimeGanZhiText(day.dayGan, hour.branch)}时 {hour.timeRange}
+                            </strong>
+                            <p>{hour.detail}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ) : null}
+
                 </div>
               </article>
             ))}
@@ -1523,6 +1548,15 @@ export default function Home() {
                                   .map((segment) => `${segment.name}${segment.timeRange}${segment.spirits.join("/")}`)
                                   .join("，")}`
                               : ""}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {day.forbiddenHours && day.forbiddenHours.length > 0 ? (
+                      <div className="trace-hours forbidden-trace-hours">
+                        {day.forbiddenHours.map((hour) => (
+                          <span key={`${day.date}-forbidden-trace-${hour.branch}`}>
+                            {getTimeGanZhiText(day.dayGan, hour.branch)}时 {hour.timeRange}：{hour.detail}
                           </span>
                         ))}
                       </div>

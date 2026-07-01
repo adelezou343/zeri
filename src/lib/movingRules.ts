@@ -1,6 +1,6 @@
 import { Solar } from "lunar-javascript";
 import { addDays, getAlmanacDay, getBirthSolarDate, parseLocalDate } from "./calendar";
-import type { AlmanacDay, DateInput, HourSegment, RecommendedHour, ScoreBreakdownItem, ScoredDay } from "./types";
+import type { AlmanacDay, DateInput, ForbiddenHour, HourSegment, RecommendedHour, ScoreBreakdownItem, ScoredDay } from "./types";
 
 const STEM_ELEMENTS: Record<string, string> = {
   甲: "木",
@@ -1417,6 +1417,7 @@ export function scoreWeddingDay(day: AlmanacDay, input: DateInput): ScoredDay {
     cautions,
     scoreBreakdown,
     recommendedHours: getWeddingRecommendedHours(day, input),
+    forbiddenHours: getForbiddenHours(day, input),
     remedies: [],
     eliminated,
   };
@@ -1925,6 +1926,7 @@ export function scoreMovingDay(day: AlmanacDay, input: DateInput): ScoredDay {
     cautions,
     scoreBreakdown,
     recommendedHours: getRecommendedHours(day, [], input.mountainBranch, profile.luBranch, input),
+    forbiddenHours: getForbiddenHours(day, input),
     remedies: [...new Set(remedies)],
     eliminated,
   };
@@ -2000,6 +2002,7 @@ export function scoreDemolitionDay(day: AlmanacDay, input?: DateInput): ScoredDa
     cautions,
     scoreBreakdown,
     recommendedHours: getGeneralRecommendedHours(day, input),
+    forbiddenHours: getForbiddenHours(day, input),
     remedies: [],
     eliminated,
   };
@@ -2174,6 +2177,7 @@ export function scoreEnshrinementDay(day: AlmanacDay, input?: DateInput): Scored
     cautions,
     scoreBreakdown,
     recommendedHours: getGeneralRecommendedHours(day, input),
+    forbiddenHours: getForbiddenHours(day, input),
     remedies: [],
     eliminated,
   };
@@ -2991,6 +2995,7 @@ function getRecommendedHours(day: AlmanacDay, avoidedBranches: string[], mountai
   }
 
   return hours
+    .filter((hour) => !hasDayTimeBranchControl(day, hour.branch))
     .map((hour, order) => {
       const conflict = getDayTimeConflictAssessment(day, hour.branch);
       const priority = getRecommendedHourPriority(hour.relation, shouldPrioritizeLuHour && hour.branch === luBranch) - Math.abs(conflict.points);
@@ -3006,6 +3011,30 @@ function getRecommendedHours(day: AlmanacDay, avoidedBranches: string[], mountai
       ...hour,
       segments: getHourSegments(day, hour.branch),
     }));
+}
+
+export function getForbiddenHours(day: AlmanacDay, input?: DateInput): ForbiddenHour[] {
+  const timeAvoidance = getTimeAvoidanceBranches(input);
+  return BRANCHES.flatMap((branch) => {
+    const details: string[] = [];
+    const avoidanceDetails = timeAvoidance.details.filter((detail) => detail.startsWith(`${branch}时`));
+    details.push(...avoidanceDetails);
+    if (SIX_CLASH[day.dayZhi] === branch) {
+      details.push(`${branch}时与本日${day.dayZhi}日形成日时六冲`);
+    }
+    const branchConflict = getDayTimeBranchConflictText(day, branch);
+    if (branchConflict) {
+      details.push(`日时五行${branchConflict}，支相克不取`);
+    }
+    const uniqueDetails = [...new Set(details)];
+    return uniqueDetails.length > 0
+      ? [{
+          branch,
+          timeRange: HOUR_RANGES[branch],
+          detail: uniqueDetails.join("；"),
+        }]
+      : [];
+  });
 }
 
 function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
@@ -3032,6 +3061,7 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
     );
     const hitsTimeAvoidance = timeAvoidance.branches.includes(branch);
     const currentTimeAvoidanceDetails = timeAvoidance.details.filter((detail) => detail.startsWith(`${branch}时`));
+    const hitsDayTimeBranchControl = hasDayTimeBranchControl(day, branch);
     const dayTimeConflict = getDayTimeConflictAssessment(day, branch);
     const wouldOverAddHusband = husbandDateCount >= 1 && hitsHusband;
     const nobleInfo = getNobleHourInfo(day, branch);
@@ -3064,7 +3094,7 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
       priority += 14;
     }
     priority += dayTimeConflict.points;
-    if (hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance) {
+    if (hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance || hitsDayTimeBranchControl) {
       priority -= 200;
     }
     return {
@@ -3083,7 +3113,7 @@ function getWeddingRecommendedHours(day: AlmanacDay, input: DateInput) {
         dayTimeConflict.detail,
       ].filter(Boolean).join("；") || "作为备选时辰"}`,
       priority,
-      blocked: hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance,
+      blocked: hitsClash || hitsFetalClash || wouldOverAddHusband || hitsTimeAvoidance || hitsDayTimeBranchControl,
       hitsHusband,
       hitsChild,
       timeGanZhi,
@@ -4025,6 +4055,14 @@ function getDayTimeConflictAssessment(day: AlmanacDay, hourBranch: string) {
     points,
     detail: details.length > 0 ? `日时五行${details.join("；")}，此时辰已降低优先级` : "",
   };
+}
+
+function hasDayTimeBranchControl(day: AlmanacDay, hourBranch: string) {
+  return Boolean(getDayTimeBranchConflictText(day, hourBranch));
+}
+
+function getDayTimeBranchConflictText(day: AlmanacDay, hourBranch: string) {
+  return getMutualControlText(day.dayZhi, BRANCH_ELEMENTS[day.dayZhi], hourBranch, BRANCH_ELEMENTS[hourBranch], "支");
 }
 
 function getMutualControlText(leftName: string, leftElement: string | undefined, rightName: string, rightElement: string | undefined, label: "干" | "支") {

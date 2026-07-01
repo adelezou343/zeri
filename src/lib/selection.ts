@@ -4,7 +4,7 @@ import {
   ZODIAC_CLASH_PENALTY,
 } from "./rules";
 import { getAlmanacDay, getBirthProfileSummary, getDateRange, getZodiacFromBirthInput } from "./calendar";
-import { applyDemolitionHardAvoidance, applyUniversalDailyJudgments, applyUniversalHostTrinityControl, getGeneralRecommendedHours, scoreConstructionDay, scoreDemolitionDay, scoreEnshrinementDay, scoreMovingDay, scoreWeddingDay } from "./movingRules";
+import { applyDemolitionHardAvoidance, applyUniversalDailyJudgments, applyUniversalHostTrinityControl, getForbiddenHours, getGeneralRecommendedHours, scoreConstructionDay, scoreDemolitionDay, scoreEnshrinementDay, scoreMovingDay, scoreWeddingDay } from "./movingRules";
 import type { AlmanacDay, DateInput, RecommendationResult, ScoreBreakdownItem, ScoredDay } from "./types";
 
 const MAX_RESULTS = 6;
@@ -171,6 +171,7 @@ function scoreDay(
     cautions,
     scoreBreakdown,
     recommendedHours: getGeneralRecommendedHours(day, input),
+    forbiddenHours: getForbiddenHours(day, input),
     remedies: [],
     eliminated,
   };

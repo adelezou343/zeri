@@ -113,6 +113,7 @@ export type ScoredDay = AlmanacDay & {
   cautions: string[];
   scoreBreakdown: ScoreBreakdownItem[];
   recommendedHours: RecommendedHour[];
+  forbiddenHours?: ForbiddenHour[];
   remedies: string[];
   eliminated: boolean;
 };
@@ -123,6 +124,12 @@ export type RecommendedHour = {
   relation: "阳贵" | "阴贵" | "六合" | "三合" | "抉山" | "禄时" | "夫星" | "子嗣" | "夫星/子嗣";
   detail: string;
   segments?: HourSegment[];
+};
+
+export type ForbiddenHour = {
+  branch: string;
+  timeRange: string;
+  detail: string;
 };
 
 export type HourSegment = {
